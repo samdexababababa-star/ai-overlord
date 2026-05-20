@@ -13,10 +13,14 @@ from typing import TYPE_CHECKING
 from ..config import ProviderModel
 from ..log import get_logger
 from .base import Provider
+from .cerebras import CerebrasProvider
+from .demo import DemoProvider
 from .google import GoogleProvider
 from .groq import GroqProvider
 from .mistral import MistralProvider
 from .nvidia import NvidiaProvider
+from .openrouter import OpenRouterProvider
+from .together import TogetherProvider
 
 if TYPE_CHECKING:
     pass
@@ -29,6 +33,9 @@ PROVIDER_CLASSES: dict[str, type[Provider]] = {
     "nvidia": NvidiaProvider,
     "google": GoogleProvider,
     "groq": GroqProvider,
+    "openrouter": OpenRouterProvider,
+    "cerebras": CerebrasProvider,
+    "together": TogetherProvider,
 }
 
 
@@ -42,12 +49,21 @@ class ProviderRegistry:
     async def load(self, keys_by_provider: dict[str, list[str]]) -> None:
         async with self._lock:
             for name, cls in PROVIDER_CLASSES.items():
+                if name == "demo":
+                    continue  # demo is always-on via ensure_demo
                 keys = keys_by_provider.get(name, [])
                 if keys:
                     self._providers[name] = cls(keys)
                     log.info("provider.loaded", provider=name, key_count=len(keys))
                 else:
                     self._providers.pop(name, None)
+            self._ensure_demo()
+
+    def _ensure_demo(self) -> None:
+        """Always register the demo provider (zero-key fallback)."""
+        if "demo" not in self._providers:
+            self._providers["demo"] = DemoProvider()
+            log.info("provider.loaded", provider="demo", key_count=0)
 
     def get(self, name: str) -> Provider | None:
         return self._providers.get(name)

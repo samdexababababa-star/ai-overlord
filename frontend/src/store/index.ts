@@ -26,7 +26,7 @@ type State = {
 
   // UI
   showOnboarding: boolean;
-  view: 'chat' | 'office' | 'memory' | 'tools' | 'settings';
+  view: 'chat' | 'office' | 'memory' | 'tools' | 'reasoning' | 'autonomy' | 'settings';
 
   // Actions
   init: () => Promise<void>;

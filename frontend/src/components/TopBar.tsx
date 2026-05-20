@@ -5,6 +5,8 @@ import { ChevronRight } from 'lucide-react';
 const titles: Record<string, { title: string; subtitle: string }> = {
   chat: { title: 'Conversation', subtitle: 'Ask anything — or hand the council an objective' },
   office: { title: 'Virtual Office', subtitle: 'Live view of the agents at work' },
+  reasoning: { title: 'Reasoning Engine', subtitle: 'Tree of Thoughts · Reflexion · Debate · Constitutional AI' },
+  autonomy: { title: 'Autonomy', subtitle: 'Goal management, background execution, HITL approvals' },
   memory: { title: 'Memory', subtitle: 'Episodic log + semantic recall' },
   tools: { title: 'Tools', subtitle: 'What the agents can reach' },
   settings: { title: 'Settings', subtitle: 'API keys, providers, app preferences' },

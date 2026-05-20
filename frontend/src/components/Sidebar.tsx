@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import {
   Brain, Building2, MessagesSquare, Wrench, Settings2, Activity,
+  Sparkles, Target,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../store';
@@ -8,6 +9,8 @@ import { useStore } from '../store';
 const items = [
   { id: 'chat', label: 'Chat', icon: MessagesSquare },
   { id: 'office', label: 'Office', icon: Building2 },
+  { id: 'reasoning', label: 'Reasoning', icon: Sparkles },
+  { id: 'autonomy', label: 'Autonomy', icon: Target },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'tools', label: 'Tools', icon: Wrench },
   { id: 'settings', label: 'Settings', icon: Settings2 },
@@ -61,7 +64,7 @@ export function Sidebar() {
           <Activity size={16} />
         </div>
         <div className="text-[9px] text-ink-300 font-mono">
-          {(health?.providers || []).length}/4
+          {(health?.providers || []).length}/7
         </div>
       </div>
     </aside>

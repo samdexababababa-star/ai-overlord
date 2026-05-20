@@ -13,9 +13,13 @@ from .log import configure_logging, get_logger
 from .providers import get_registry
 from .providers._http import close_client
 from .routes import agents as agents_routes
+from .routes import autonomy as autonomy_routes
 from .routes import chat as chat_routes
+from .routes import knowledge as knowledge_routes
 from .routes import memory as memory_routes
 from .routes import onboarding as onboarding_routes
+from .routes import reasoning as reasoning_routes
+from .routes import settings as settings_routes
 from .routes import tools as tools_routes
 
 configure_logging()
@@ -50,6 +54,10 @@ def create_app() -> FastAPI:
     app.include_router(agents_routes.router)
     app.include_router(memory_routes.router)
     app.include_router(tools_routes.router)
+    app.include_router(settings_routes.router)
+    app.include_router(autonomy_routes.router)
+    app.include_router(reasoning_routes.router)
+    app.include_router(knowledge_routes.router)
 
     @app.get("/health")
     def health():

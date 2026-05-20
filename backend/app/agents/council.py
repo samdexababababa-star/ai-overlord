@@ -1,10 +1,12 @@
-"""The Council orchestrator.
+"""The Council orchestrator — enhanced with advanced reasoning.
 
-Implements two modes:
+Implements three modes:
 
 1. **Fast path** — single Conductor call. Used for short factual questions.
 2. **Council mode** — Planner → (Researcher/Coder/Vision/Executor in parallel)
    → Critic loop → Conductor. Used for ``/run`` objectives.
+3. **Deep reasoning** — Delegates to the deliberate reasoning engine for
+   complex tasks (ToT, Reflexion, Debate, Constitutional).
 
 All inter-agent traffic is published on the global :class:`MessageBus` so the
 UI can animate it. Tool calls are dispatched through the central
@@ -13,16 +15,20 @@ UI can animate it. Tool calls are dispatched through the central
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 from typing import Any
 
 from ..log import get_logger
 from ..memory import EpisodicMemory
+from ..memory.knowledge_graph import KnowledgeGraph, extract_entities_and_relations
 from ..providers import ChatMessage, get_registry
 from ..providers.router import ModelRouter, TaskProfile
+from ..reasoning.deliberate import DeliberateReasoner
 from ..tools import get_tools
+from ..user_settings import get_settings_manager
 from .bus import Event, MessageBus, get_bus
-from .roles import CONDUCTOR, CRITIC, PLANNER, AgentRole
+from .roles import CODER, CONDUCTOR, CRITIC, PLANNER, RESEARCHER, AgentRole
 
 log = get_logger(__name__)
 
@@ -33,6 +39,8 @@ class Council:
         self.bus = bus or get_bus()
         self.tools = get_tools()
         self.router = ModelRouter(get_registry())
+        self.reasoner = DeliberateReasoner(self.router)
+        self.kg = KnowledgeGraph()
 
     # ------------------------------------------------------------------
     # Public entrypoints
@@ -43,21 +51,29 @@ class Council:
         await self._emit("user.message", "user", user_message, {"session": session})
         self.episodic.record(kind="user_msg", actor="user", content=user_message, session=session)
         history = self._history_for(session)
-        sys = ChatMessage(
-            role="system",
-            content=(
-                "You are AI Overlord — a helpful, terse desktop assistant. You may call tools when "
-                "useful. Reply in the user's language."
-            ),
+
+        # Check for relevant knowledge graph context
+        kg_context = self._kg_context(user_message)
+
+        sys_content = (
+            "You are AI Overlord — a helpful, terse desktop assistant. You may call tools when "
+            "useful. Reply in the user's language."
         )
+        if kg_context:
+            sys_content += f"\n\nRelevant knowledge:\n{kg_context}"
+
+        sys = ChatMessage(role="system", content=sys_content)
         resp = await self.router.chat(
             [sys, *history, ChatMessage(role="user", content=user_message)],
             profile=TaskProfile(capability="chat"),
             tools=self.tools.specs(),
             tool_choice="auto",
         )
-        # Single round of tool calls if requested.
-        if resp.tool_calls:
+
+        # Handle tool calls (up to 3 rounds)
+        for _ in range(3):
+            if not resp.tool_calls:
+                break
             tool_results = await self._run_tool_calls(resp.tool_calls, actor="conductor")
             follow_msgs = [
                 sys,
@@ -77,6 +93,7 @@ class Council:
             resp = await self.router.chat(
                 follow_msgs, profile=TaskProfile(capability="chat")
             )
+
         await self._emit("agent.message", "conductor", resp.text, {"model": resp.model})
         self.episodic.record(
             kind="assistant_msg",
@@ -85,27 +102,65 @@ class Council:
             session=session,
             meta={"model": resp.model, "provider": resp.provider},
         )
+
+        # Background: extract entities for knowledge graph
+        asyncio.create_task(self._extract_knowledge(user_message + "\n" + resp.text))
+
         return resp.text
 
     async def run_objective(self, objective: str, session: str = "default") -> dict[str, Any]:
-        """Full council with planner + critic loop."""
+        """Full council with planner + parallel agents + critic loop."""
         await self._emit("council.start", "system", objective, {"session": session})
         self.episodic.record(
             kind="user_msg", actor="user", content=objective, session=session, meta={"council": True}
         )
 
-        # 1. Planner
+        # Check settings for reasoning strategy
+        sm = get_settings_manager()
+        settings = sm.load()
+
+        # 1. Planner decomposes
         plan = await self._call_role(PLANNER, [
             ChatMessage(role="user", content=f"Objective: {objective}\n\nProduce the plan."),
         ])
         await self._emit("agent.message", PLANNER.id, plan, {"phase": "plan"})
 
-        # 2. Critic on the plan
-        crit_in = (
-            f"Objective: {objective}\n\nProposed plan:\n{plan}\n\n"
-            "Critique the plan as instructed."
+        # 2. Parallel execution: Researcher + Coder run simultaneously
+        research_result, code_result = await asyncio.gather(
+            self._call_role_safe(RESEARCHER, [
+                ChatMessage(
+                    role="user",
+                    content=f"Objective: {objective}\n\nPlan:\n{plan}\n\n"
+                    "Research relevant information for this objective.",
+                ),
+            ]),
+            self._call_role_safe(CODER, [
+                ChatMessage(
+                    role="user",
+                    content=f"Objective: {objective}\n\nPlan:\n{plan}\n\n"
+                    "If code is needed, produce it. Otherwise say N/A.",
+                ),
+            ]),
         )
-        critique = await self._call_role(CRITIC, [ChatMessage(role="user", content=crit_in)])
+        if research_result:
+            await self._emit("agent.message", RESEARCHER.id, research_result, {"phase": "research"})
+        if code_result:
+            await self._emit("agent.message", CODER.id, code_result, {"phase": "code"})
+
+        # 3. Critic evaluates everything
+        critique_input = (
+            f"Objective: {objective}\n\n"
+            f"Plan:\n{plan}\n\n"
+        )
+        if research_result:
+            critique_input += f"Research findings:\n{research_result[:2000]}\n\n"
+        if code_result and code_result.strip() != "N/A":
+            critique_input += f"Code produced:\n{code_result[:2000]}\n\n"
+        critique_input += "Critique the plan and outputs as instructed."
+
+        critique = await self._call_role(CRITIC, [
+            ChatMessage(role="user", content=critique_input),
+        ])
         await self._emit("agent.message", CRITIC.id, critique, {"phase": "critique"})
 
         verdict = "APPROVE"
@@ -114,36 +169,60 @@ class Council:
         elif "BLOCK" in critique.upper():
             verdict = "BLOCK"
 
-        # 3. Revise once if critic asked
+        # 4. Revise if critic asked
         if verdict == "REVISE":
             plan = await self._call_role(
                 PLANNER,
-                [
-                    ChatMessage(
-                        role="user",
-                        content=(
-                            f"Objective: {objective}\n\nYour earlier plan:\n{plan}\n\n"
-                            f"Critic feedback:\n{critique}\n\nProduce a revised plan."
-                        ),
-                    )
-                ],
+                [ChatMessage(
+                    role="user",
+                    content=(
+                        f"Objective: {objective}\n\nYour earlier plan:\n{plan}\n\n"
+                        f"Critic feedback:\n{critique}\n\nProduce a revised plan."
+                    ),
+                )],
             )
             await self._emit("agent.message", PLANNER.id, plan, {"phase": "plan_revised"})
 
-        # 4. Conductor produces the final synthesis (no autonomous shell/browser yet)
-        final = await self._call_role(
-            CONDUCTOR,
-            [
-                ChatMessage(
-                    role="user",
-                    content=(
-                        f"Objective: {objective}\n\nFinal plan:\n{plan}\n\n"
-                        f"Critic verdict: {verdict}\n\n"
-                        "Write the final response to the user. If BLOCK, explain why and stop."
-                    ),
+        # 5. Use deep reasoning if enabled and complexity warrants it
+        deep_analysis = ""
+        if settings.council.enable_tree_of_thoughts or settings.council.enable_reflexion:
+            complexity = self.reasoner.analyze_complexity(objective)
+            if complexity.estimated_difficulty > settings.council.fast_mode_threshold:
+                await self._emit(
+                    "agent.thinking", "system",
+                    f"Engaging {complexity.recommended_strategy.value} reasoning...",
+                    {"difficulty": complexity.estimated_difficulty},
                 )
-            ],
+                try:
+                    reasoning_result = await self.reasoner.solve(objective)
+                    deep_analysis = reasoning_result.answer
+                    await self._emit(
+                        "agent.message", "reasoner", deep_analysis[:1000],
+                        {
+                            "strategy": reasoning_result.strategy_used.value,
+                            "phase": "deep_reasoning",
+                        },
+                    )
+                except Exception as e:
+                    log.warning("council.reasoning_fail", error=str(e)[:200])
+
+        # 6. Conductor produces the final synthesis
+        synthesis_input = (
+            f"Objective: {objective}\n\n"
+            f"Final plan:\n{plan}\n\n"
+            f"Critic verdict: {verdict}\n\n"
         )
+        if research_result:
+            synthesis_input += f"Research:\n{research_result[:1500]}\n\n"
+        if code_result and code_result.strip() != "N/A":
+            synthesis_input += f"Code:\n{code_result[:1500]}\n\n"
+        if deep_analysis:
+            synthesis_input += f"Deep analysis:\n{deep_analysis[:1500]}\n\n"
+        synthesis_input += "Write the final response to the user. If BLOCK, explain why."
+
+        final = await self._call_role(CONDUCTOR, [
+            ChatMessage(role="user", content=synthesis_input),
+        ])
         await self._emit("agent.message", CONDUCTOR.id, final, {"phase": "synthesis"})
         await self._emit("council.finish", "system", "ok", {"verdict": verdict})
 
@@ -152,9 +231,27 @@ class Council:
             actor="conductor",
             content=final,
             session=session,
-            meta={"verdict": verdict, "plan": plan, "critique": critique},
+            meta={
+                "verdict": verdict,
+                "plan": plan,
+                "critique": critique,
+                "research": research_result[:500] if research_result else "",
+            },
         )
-        return {"plan": plan, "critique": critique, "verdict": verdict, "final": final}
+
+        asyncio.create_task(self._extract_knowledge(
+            f"{objective}\n{plan}\n{final}"
+        ))
+
+        return {
+            "plan": plan,
+            "research": research_result or "",
+            "code": code_result or "",
+            "critique": critique,
+            "verdict": verdict,
+            "deep_analysis": deep_analysis,
+            "final": final,
+        }
 
     # ------------------------------------------------------------------
     # Internals
@@ -169,8 +266,18 @@ class Council:
                 role="user" if e["kind"] == "user_msg" else "assistant",
                 content=e["content"],
             )
-            for e in eps[:-1]  # exclude the one we just inserted
+            for e in eps[:-1]
         ]
+
+    def _kg_context(self, query: str, limit: int = 5) -> str:
+        """Retrieve relevant knowledge graph context."""
+        results = self.kg.search(query, limit=limit)
+        if not results:
+            return ""
+        lines = []
+        for r in results:
+            lines.append(f"- {r.get('label', '')} ({r.get('type', '')})")
+        return "\n".join(lines)
 
     async def _call_role(self, role: AgentRole, msgs: list[ChatMessage]) -> str:
         await self._emit("agent.start", role.id, "", {"room": role.room})
@@ -183,6 +290,14 @@ class Council:
             {"model": resp.model, "provider": resp.provider, "tokens": resp.usage},
         )
         return resp.text
+
+    async def _call_role_safe(self, role: AgentRole, msgs: list[ChatMessage]) -> str:
+        """Call a role, returning empty string on failure instead of raising."""
+        try:
+            return await self._call_role(role, msgs)
+        except Exception as e:
+            log.warning("council.role_fail", role=role.id, error=str(e)[:200])
+            return ""
 
     async def _run_tool_calls(self, calls, actor: str) -> list[dict[str, Any]]:
         results = []
@@ -208,7 +323,6 @@ class Council:
     async def _emit(self, kind: str, actor: str, content: str, meta: dict[str, Any]) -> None:
         ev = Event(kind=kind, actor=actor, content=content, meta=meta)  # type: ignore[arg-type]
         await self.bus.publish(ev)
-        # Also log to episodic for replay
         with contextlib.suppress(Exception):
             self.episodic.record(
                 kind="council_turn",
@@ -216,3 +330,27 @@ class Council:
                 content=content[:4000],
                 meta={"event": kind, **meta},
             )
+
+    async def _extract_knowledge(self, text: str) -> None:
+        """Background task: extract entities from conversation for the KG."""
+        try:
+            sm = get_settings_manager()
+            if not sm.load().memory.auto_extract_entities:
+                return
+            entities, relations = await extract_entities_and_relations(
+                text, self.router
+            )
+            for e in entities:
+                self.kg.add_entity(
+                    e.get("id", e.get("label", "")),
+                    e.get("label", ""),
+                    e.get("type", "concept"),
+                )
+            for r in relations:
+                self.kg.add_relationship(
+                    r.get("source", ""),
+                    r.get("target", ""),
+                    r.get("relation", "related_to"),
+                )
+        except Exception as e:
+            log.debug("council.kg_extract_fail", error=str(e)[:200])
