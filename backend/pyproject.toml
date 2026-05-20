@@ -1,0 +1,43 @@
+[project]
+name = "ai-overlord-backend"
+version = "0.1.0"
+description = "Autonomous multi-provider AI agent council backend"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.5.0",
+    "httpx>=0.27.0",
+    "tenacity>=9.0.0",
+    "structlog>=24.4.0",
+    "python-multipart>=0.0.12",
+    "aiosqlite>=0.20.0",
+    "chromadb>=0.5.0",
+    "playwright>=1.48.0",
+    "duckduckgo-search>=6.3.0",
+    "mss>=10.0.0",
+    "Pillow>=11.0.0",
+    "rich>=13.9.0",
+    "websockets>=13.1",
+    "orjson>=3.10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.7.0",
+    "mypy>=1.13.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "A", "C4", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
