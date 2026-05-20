@@ -38,6 +38,6 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B", "A", "C4", "SIM"]
 ignore = ["E501"]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
+# pytest config lives at the repo root (pytest.ini + conftest.py) so the rootdir
+# discovery picks up the repo root rather than `backend/`, which keeps `from
+# backend.app...` imports resolvable in CI.
