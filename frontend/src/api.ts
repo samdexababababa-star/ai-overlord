@@ -76,3 +76,64 @@ export type AgentEvent = {
   content?: string;
   meta?: Record<string, unknown>;
 };
+
+// ---- Web-AI Mesh ----
+
+export type WebAISiteHealth = {
+  status: 'unknown' | 'ok' | 'degraded' | 'broken' | 'needs_login';
+  consecutive_failures: number;
+  last_success_at: number;
+  last_error: string;
+};
+
+export type WebAIAuth = {
+  mode: string;
+  needs_login: boolean;
+  last_checked_at: number;
+};
+
+export type WebAISite = {
+  id: string;
+  label: string;
+  url: string;
+  host: string;
+  category: 'ai' | 'social' | 'custom';
+  include_in_council: boolean;
+  health: WebAISiteHealth;
+  auth: WebAIAuth;
+  confidence: number;
+  last_verified_at: number;
+  is_ready: boolean;
+  selectors?: Record<string, unknown>;
+  submit?: Record<string, unknown>;
+  stream_settle?: Record<string, unknown>;
+  calibration?: Record<string, unknown>;
+  notes?: string;
+};
+
+export type WebAIPreset = {
+  id: string;
+  label: string;
+  url: string;
+  category: 'ai' | 'social' | 'custom';
+};
+
+export type WebAILearnState = {
+  profile_id: string;
+  phase: 'opened' | 'awaiting_login' | 'probing' | 'calibrating' | 'ready' | 'failed';
+  started_at: number;
+  last_update_at: number;
+  notes: string[];
+  error: string;
+  discovered_selectors: Record<string, string>;
+  confidence: number;
+};
+
+export type WebAIAskResult = {
+  ok: boolean;
+  text: string;
+  elapsed_ms: number;
+  retries: number;
+  selector_repaired: boolean;
+  error: string;
+};

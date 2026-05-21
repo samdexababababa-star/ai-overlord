@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from backend.app.providers.base import Provider
 from backend.app.providers.google import GOOGLE_MODELS, GoogleProvider
 from backend.app.providers.groq import GROQ_MODELS, GroqProvider

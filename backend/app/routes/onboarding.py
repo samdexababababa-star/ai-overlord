@@ -68,6 +68,39 @@ PROVIDER_INFO = {
         ],
         "tier_note": "Ultra-fast Llama 3.3 70B inference (~800 tok/s). Free tier with daily TPM caps.",
     },
+    "openrouter": {
+        "label": "OpenRouter",
+        "console": "https://openrouter.ai/keys",
+        "signup": "https://openrouter.ai/",
+        "steps": [
+            "Go to https://openrouter.ai/ and create a free account.",
+            "Open https://openrouter.ai/keys and create an API key.",
+            "Copy the 'sk-or-…' key and paste it below.",
+        ],
+        "tier_note": "Unified gateway to 200+ models. Several free models available (Llama, DeepSeek, Qwen).",
+    },
+    "cerebras": {
+        "label": "Cerebras Cloud",
+        "console": "https://cloud.cerebras.ai/",
+        "signup": "https://cloud.cerebras.ai/",
+        "steps": [
+            "Go to https://cloud.cerebras.ai/ and sign up.",
+            "Navigate to API Keys in your dashboard.",
+            "Create a new key and paste it below.",
+        ],
+        "tier_note": "Ultra-fast inference on Wafer-Scale hardware. Free tier with daily limits.",
+    },
+    "together": {
+        "label": "Together AI",
+        "console": "https://api.together.xyz/settings/api-keys",
+        "signup": "https://api.together.xyz/",
+        "steps": [
+            "Go to https://api.together.xyz/ and sign up.",
+            "Navigate to https://api.together.xyz/settings/api-keys.",
+            "Create an API key and paste it below.",
+        ],
+        "tier_note": "Fast open-source model inference. Free credits on signup.",
+    },
 }
 
 

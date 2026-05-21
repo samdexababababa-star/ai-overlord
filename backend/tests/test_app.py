@@ -24,6 +24,13 @@ async def test_app_constructs():
         "/agents/events",
         "/memory/episodic",
         "/tools",
+        "/settings",
+        "/autonomy/goals",
+        "/autonomy/loop/start",
+        "/reasoning/solve",
+        "/reasoning/strategies",
+        "/knowledge/graph",
+        "/knowledge/entity",
     ):
         assert expected in routes, f"missing route {expected}"
 
@@ -33,7 +40,10 @@ async def test_provider_info():
     from backend.app.routes.onboarding import providers_info
 
     info = providers_info()
-    assert set(info.keys()) == {"mistral", "nvidia", "google", "groq"}
+    assert {"mistral", "nvidia", "google", "groq"}.issubset(set(info.keys()))
+    assert "openrouter" in info
+    assert "cerebras" in info
+    assert "together" in info
     for k, v in info.items():
         assert v["label"]
         assert v["console"].startswith("https://")

@@ -6,7 +6,7 @@ import { Check, ExternalLink, Loader2, X, Plus, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../store';
 
-const ORDER = ['mistral', 'nvidia', 'google', 'groq'] as const;
+const ORDER = ['mistral', 'nvidia', 'google', 'groq', 'openrouter', 'cerebras', 'together'] as const;
 type ProviderId = (typeof ORDER)[number];
 
 export function OnboardingWizard() {
