@@ -91,6 +91,15 @@ class MemoryConfig(BaseModel):
     auto_extract_entities: bool = True
 
 
+class StartupConfig(BaseModel):
+    """System startup / auto-launch settings."""
+
+    open_at_login: bool = False
+    start_minimized: bool = False
+    auto_start_backend: bool = True
+    auto_start_autonomy: bool = False
+
+
 class UIConfig(BaseModel):
     """UI preferences (stored server-side, synced to frontend)."""
 
@@ -112,6 +121,7 @@ class UserSettings(BaseModel):
     council: CouncilConfig = Field(default_factory=CouncilConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
+    startup: StartupConfig = Field(default_factory=StartupConfig)
     updated_at: float = Field(default_factory=time.time)
     version: int = 1
 

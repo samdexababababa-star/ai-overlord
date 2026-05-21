@@ -3,6 +3,12 @@ import { apiJSON } from '../api';
 import { useStore } from '../store';
 
 type Settings = {
+  startup: {
+    open_at_login: boolean;
+    start_minimized: boolean;
+    auto_start_backend: boolean;
+    auto_start_autonomy: boolean;
+  };
   hitl: {
     enabled: boolean;
     shell_commands: boolean;
@@ -104,11 +110,19 @@ export function SettingsPanel() {
   const setShow = useStore((s) => s.setShowOnboarding);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [saving, setSaving] = useState(false);
+  const [autoStart, setAutoStart] = useState<boolean | null>(null);
+  const [platformInfo, setPlatformInfo] = useState<{ os: string; isPackaged: boolean } | null>(null);
 
   const totalKeys = Object.values(configured).reduce((n, arr) => n + arr.length, 0);
 
   useEffect(() => {
     apiJSON<Settings>('/settings').then(setSettings).catch(() => {});
+    if (window.overlord?.platform) {
+      window.overlord.platform().then((p) => setPlatformInfo({ os: p.os, isPackaged: p.isPackaged })).catch(() => {});
+    }
+    if (window.overlord?.autoStart) {
+      window.overlord.autoStart.get().then(setAutoStart).catch(() => {});
+    }
   }, []);
 
   const patch = async (path: string, value: unknown) => {
@@ -133,6 +147,17 @@ export function SettingsPanel() {
       // silently fail
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleAutoStart = async (enabled: boolean) => {
+    if (!window.overlord?.autoStart) return;
+    try {
+      await window.overlord.autoStart.set(enabled);
+      setAutoStart(enabled);
+      if (settings) await patch('startup.open_at_login', enabled);
+    } catch (e) {
+      console.error('autoStart toggle failed', e);
     }
   };
 
@@ -307,6 +332,43 @@ export function SettingsPanel() {
             <Toggle label="Notification sound" checked={settings.ui.notification_sound} onChange={(v) => patch('ui.notification_sound', v)} />
           </Section>
         </>
+      )}
+
+      {/* System & Startup */}
+      {settings && (
+        <Section title="System & Startup">
+          <div className="text-[11px] text-ink-300 mb-2">
+            {platformInfo ? (
+              <>Detected: <span className="font-mono text-ink-100">{platformInfo.os}</span> · {platformInfo.isPackaged ? 'packaged build' : 'development mode'}</>
+            ) : (
+              <>Running in browser (no Electron bridge)</>
+            )}
+          </div>
+          <Toggle
+            label={`Open at login (${platformInfo?.os === 'win32' ? 'Windows 11 Startup folder' : platformInfo?.os === 'darwin' ? 'macOS LaunchAgent' : 'Linux XDG autostart'})`}
+            checked={!!autoStart}
+            onChange={toggleAutoStart}
+            description="Launch AI Overlord automatically when you sign in"
+          />
+          <Toggle
+            label="Start minimized"
+            checked={settings.startup.start_minimized}
+            onChange={(v) => patch('startup.start_minimized', v)}
+            description="Open hidden in the tray on startup"
+          />
+          <Toggle
+            label="Auto-start backend with the app"
+            checked={settings.startup.auto_start_backend}
+            onChange={(v) => patch('startup.auto_start_backend', v)}
+            description="Spawn the FastAPI backend when Electron launches"
+          />
+          <Toggle
+            label="Auto-start autonomy loop"
+            checked={settings.startup.auto_start_autonomy}
+            onChange={(v) => patch('startup.auto_start_autonomy', v)}
+            description="Resume 24/7 goal pursuit when the app launches"
+          />
+        </Section>
       )}
 
       {/* About */}
