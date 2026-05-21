@@ -7,6 +7,7 @@ const titles: Record<string, { title: string; subtitle: string }> = {
   office: { title: 'Virtual Office', subtitle: 'Live view of the agents at work' },
   reasoning: { title: 'Reasoning Engine', subtitle: 'Tree of Thoughts · Reflexion · Debate · Constitutional AI' },
   autonomy: { title: 'Autonomy', subtitle: 'Goal management, background execution, HITL approvals' },
+  webai: { title: 'Web-AI Mesh', subtitle: 'Teach the council to drive external AI sites + social via Chrome' },
   memory: { title: 'Memory', subtitle: 'Episodic log + semantic recall' },
   tools: { title: 'Tools', subtitle: 'What the agents can reach' },
   settings: { title: 'Settings', subtitle: 'API keys, providers, app preferences' },
@@ -15,7 +16,7 @@ const titles: Record<string, { title: string; subtitle: string }> = {
 export function TopBar() {
   const view = useStore((s) => s.view);
   const health = useStore((s) => s.health);
-  const meta = titles[view];
+  const meta = titles[view] ?? { title: view, subtitle: '' };
   return (
     <header className="drag flex items-center justify-between h-14 px-6 border-b border-glass-ring">
       <div className="flex items-center gap-3">

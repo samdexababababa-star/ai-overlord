@@ -21,6 +21,7 @@ from .routes import onboarding as onboarding_routes
 from .routes import reasoning as reasoning_routes
 from .routes import settings as settings_routes
 from .routes import tools as tools_routes
+from .routes import web_ai as web_ai_routes
 
 configure_logging()
 log = get_logger(__name__)
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(autonomy_routes.router)
     app.include_router(reasoning_routes.router)
     app.include_router(knowledge_routes.router)
+    app.include_router(web_ai_routes.router)
 
     @app.get("/health")
     def health():

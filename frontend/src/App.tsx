@@ -10,6 +10,7 @@ import { ToolsPanel } from './components/ToolsPanel';
 import { MemoryPanel } from './components/MemoryPanel';
 import { ReasoningPanel } from './components/ReasoningPanel';
 import { AutonomyPanel } from './components/AutonomyPanel';
+import { WebAIPanel } from './components/WebAIPanel';
 import { useStore } from './store';
 
 function ViewSwitch() {
@@ -30,6 +31,7 @@ function ViewSwitch() {
         {view === 'tools' && <ToolsPanel />}
         {view === 'reasoning' && <ReasoningPanel />}
         {view === 'autonomy' && <AutonomyPanel />}
+        {view === 'webai' && <WebAIPanel />}
         {view === 'settings' && <SettingsPanel />}
       </motion.div>
     </AnimatePresence>

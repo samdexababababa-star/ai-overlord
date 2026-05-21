@@ -26,6 +26,10 @@ EventKind = Literal[
     "user.message",
     "system.log",
     "system.notice",
+    "web_ai.learn",
+    "web_ai.ask",
+    "web_ai.social.read",
+    "web_ai.social.posted",
 ]
 
 

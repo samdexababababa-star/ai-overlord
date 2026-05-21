@@ -117,7 +117,23 @@ CONDUCTOR = AgentRole(
     profile=TaskProfile(capability="reason"),
 )
 
+# Oracle — voice of an external web AI consulted via the Web-AI Mesh. Its
+# `profile` is overridden at call time with the actual web-ai:<id> model.
+ORACLE = AgentRole(
+    id="oracle",
+    name="Vox",
+    title="External Oracle",
+    room="balcony",
+    color="#5be7c4",
+    system_prompt=(
+        "You are an external AI consulted by the Council for a second opinion. "
+        "Reply in at most 4 short lines. Disagree only when you have a concrete reason. "
+        "Cite any factual claim with a single source."
+    ),
+    profile=TaskProfile(capability="chat"),
+)
+
 
 ROLES: dict[str, AgentRole] = {
-    r.id: r for r in (PLANNER, RESEARCHER, CODER, VISION, CRITIC, EXECUTOR, CONDUCTOR)
+    r.id: r for r in (PLANNER, RESEARCHER, CODER, VISION, CRITIC, EXECUTOR, CONDUCTOR, ORACLE)
 }

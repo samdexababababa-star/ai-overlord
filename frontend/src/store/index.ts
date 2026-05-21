@@ -1,5 +1,10 @@
 import { create } from 'zustand';
-import { apiFetch, apiJSON, type AgentEvent, type AgentRole, type ConfiguredKeys, type Health, type ProviderInfo, type ProviderModel } from '../api';
+import {
+  apiFetch, apiJSON,
+  type AgentEvent, type AgentRole, type ConfiguredKeys, type Health,
+  type ProviderInfo, type ProviderModel,
+  type WebAISite, type WebAIPreset, type WebAILearnState, type WebAIAskResult,
+} from '../api';
 
 type ChatTurn = {
   id: string;
@@ -24,9 +29,16 @@ type State = {
   events: AgentEvent[];
   eventsConnected: boolean;
 
+  // Web-AI Mesh
+  webAiSites: WebAISite[];
+  webAiPresets: WebAIPreset[];
+  webAiLearn: Record<string, WebAILearnState>;
+  webAiPending: boolean;
+  webAiLastAsk: Record<string, WebAIAskResult>;
+
   // UI
   showOnboarding: boolean;
-  view: 'chat' | 'office' | 'memory' | 'tools' | 'reasoning' | 'autonomy' | 'settings';
+  view: 'chat' | 'office' | 'memory' | 'tools' | 'reasoning' | 'autonomy' | 'settings' | 'webai';
 
   // Actions
   init: () => Promise<void>;
@@ -43,6 +55,14 @@ type State = {
   ask: (msg: string) => Promise<void>;
   runObjective: (obj: string) => Promise<void>;
   connectEvents: () => void;
+
+  loadWebAiSites: () => Promise<void>;
+  registerWebAiSite: (req: { url: string; label?: string; category?: string; apply_preset_id?: string }) => Promise<void>;
+  patchWebAiSite: (id: string, patch: { include_in_council?: boolean; notes?: string; label?: string }) => Promise<void>;
+  deleteWebAiSite: (id: string) => Promise<void>;
+  learnWebAiSite: (id: string) => Promise<void>;
+  refreshLearnState: (id: string) => Promise<void>;
+  askWebAi: (id: string, prompt: string) => Promise<void>;
 };
 
 export const useStore = create<State>((set, get) => ({
@@ -57,12 +77,23 @@ export const useStore = create<State>((set, get) => ({
   eventsConnected: false,
   showOnboarding: false,
   view: 'chat',
+  webAiSites: [],
+  webAiPresets: [],
+  webAiLearn: {},
+  webAiPending: false,
+  webAiLastAsk: {},
 
   async init() {
     try {
       const health = await apiJSON<Health>('/health');
       set({ health });
-      await Promise.all([get().loadProviders(), get().loadKeys(), get().loadModels(), get().loadRoles()]);
+      await Promise.all([
+        get().loadProviders(),
+        get().loadKeys(),
+        get().loadModels(),
+        get().loadRoles(),
+        get().loadWebAiSites(),
+      ]);
       if (!health.has_keys) set({ showOnboarding: true });
       get().connectEvents();
     } catch (e) {
@@ -165,6 +196,64 @@ export const useStore = create<State>((set, get) => ({
         turns: [...s.turns, { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${(e as Error).message}` }],
         pending: false,
       }));
+    }
+  },
+
+  async loadWebAiSites() {
+    const data = await apiJSON<{ sites: WebAISite[]; presets: WebAIPreset[] }>('/web-ai/sites');
+    set({ webAiSites: data.sites, webAiPresets: data.presets });
+  },
+
+  async registerWebAiSite(req) {
+    set({ webAiPending: true });
+    try {
+      await apiJSON('/web-ai/sites', { method: 'POST', body: JSON.stringify(req) });
+      await get().loadWebAiSites();
+    } finally {
+      set({ webAiPending: false });
+    }
+  },
+
+  async patchWebAiSite(id, patch) {
+    await apiJSON(`/web-ai/sites/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+    await get().loadWebAiSites();
+  },
+
+  async deleteWebAiSite(id) {
+    await apiFetch(`/web-ai/sites/${id}`, { method: 'DELETE' });
+    await get().loadWebAiSites();
+  },
+
+  async learnWebAiSite(id) {
+    set({ webAiPending: true });
+    try {
+      await apiJSON(`/web-ai/sites/${id}/learn`, { method: 'POST' });
+      await get().refreshLearnState(id);
+    } finally {
+      set({ webAiPending: false });
+    }
+  },
+
+  async refreshLearnState(id) {
+    try {
+      const state = await apiJSON<WebAILearnState>(`/web-ai/sites/${id}/learn`);
+      set((s) => ({ webAiLearn: { ...s.webAiLearn, [id]: state } }));
+    } catch {
+      // 404 just means no learn cycle has run yet; ignore.
+    }
+  },
+
+  async askWebAi(id, prompt) {
+    set({ webAiPending: true });
+    try {
+      const result = await apiJSON<WebAIAskResult>(`/web-ai/sites/${id}/ask`, {
+        method: 'POST',
+        body: JSON.stringify({ prompt }),
+      });
+      set((s) => ({ webAiLastAsk: { ...s.webAiLastAsk, [id]: result } }));
+      await get().loadWebAiSites();
+    } finally {
+      set({ webAiPending: false });
     }
   },
 

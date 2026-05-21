@@ -28,7 +28,15 @@ from ..reasoning.deliberate import DeliberateReasoner
 from ..tools import get_tools
 from ..user_settings import get_settings_manager
 from .bus import Event, MessageBus, get_bus
-from .roles import CODER, CONDUCTOR, CRITIC, PLANNER, RESEARCHER, AgentRole
+from .roles import (
+    CODER,
+    CONDUCTOR,
+    CRITIC,
+    ORACLE,
+    PLANNER,
+    RESEARCHER,
+    AgentRole,
+)
 
 log = get_logger(__name__)
 
@@ -206,6 +214,21 @@ class Council:
                 except Exception as e:
                     log.warning("council.reasoning_fail", error=str(e)[:200])
 
+        # 5.5 Optional Oracle phase — consult registered Web-AI sites for an
+        # external second opinion. Off by default; failures are non-fatal.
+        oracle_voices: list[dict[str, str]] = []
+        if settings.council.consult_external_oracle:
+            try:
+                oracle_voices = await self._consult_oracle(
+                    objective=objective,
+                    plan=plan,
+                    critique=critique,
+                    deep_analysis=deep_analysis,
+                    limit=max(0, settings.council.external_oracle_max),
+                )
+            except Exception as e:  # noqa: BLE001
+                log.warning("council.oracle_fail", error=str(e)[:200])
+
         # 6. Conductor produces the final synthesis
         synthesis_input = (
             f"Objective: {objective}\n\n"
@@ -218,6 +241,11 @@ class Council:
             synthesis_input += f"Code:\n{code_result[:1500]}\n\n"
         if deep_analysis:
             synthesis_input += f"Deep analysis:\n{deep_analysis[:1500]}\n\n"
+        if oracle_voices:
+            synthesis_input += "External oracle voices:\n"
+            for v in oracle_voices:
+                synthesis_input += f"- {v['site']}: {v['answer'][:600]}\n"
+            synthesis_input += "\n"
         synthesis_input += "Write the final response to the user. If BLOCK, explain why."
 
         final = await self._call_role(CONDUCTOR, [
@@ -250,6 +278,7 @@ class Council:
             "critique": critique,
             "verdict": verdict,
             "deep_analysis": deep_analysis,
+            "oracle_voices": oracle_voices,
             "final": final,
         }
 
@@ -330,6 +359,64 @@ class Council:
                 content=content[:4000],
                 meta={"event": kind, **meta},
             )
+
+    async def _consult_oracle(
+        self,
+        objective: str,
+        plan: str,
+        critique: str,
+        deep_analysis: str,
+        limit: int,
+    ) -> list[dict[str, str]]:
+        """Ask up to ``limit`` Web-AI sites (flagged include_in_council) for a
+        second opinion. Returns ``[{"site": id, "answer": text}, ...]``."""
+        if limit <= 0:
+            return []
+        # Local import to avoid the council module forcing a hard dep on the
+        # web_ai package (and its Playwright import chain) at top level.
+        from ..web_ai.client import WebAIClient
+        from ..web_ai.profiles import SiteCategory, get_profile_store
+
+        store = get_profile_store()
+        candidates = [
+            p for p in store.list_all(category=SiteCategory.AI)
+            if p.include_in_council and p.is_ready()
+        ]
+        if not candidates:
+            return []
+        chosen = candidates[:limit]
+        prompt = (
+            f"{ORACLE.system_prompt}\n\n"
+            f"Objective: {objective}\n\n"
+            f"Council plan:\n{plan}\n\n"
+            f"Critic notes:\n{critique[:800]}\n"
+        )
+        if deep_analysis:
+            prompt += f"\nDeep reasoning result:\n{deep_analysis[:600]}\n"
+        prompt += "\nGive your second opinion as instructed."
+
+        async def _one(profile):  # noqa: ANN001 — internal helper
+            client = WebAIClient(profile=profile, store=store)
+            await self._emit("agent.start", ORACLE.id, profile.label, {"site_id": profile.id})
+            try:
+                result = await client.ask(prompt, timeout_ms=60_000)
+            except Exception as e:  # noqa: BLE001
+                log.warning("council.oracle_call_fail", site=profile.id, error=str(e)[:200])
+                return {"site": profile.id, "answer": "", "ok": False}
+            await self._emit(
+                "agent.finish",
+                ORACLE.id,
+                result.text[:200],
+                {"site_id": profile.id, "elapsed_ms": result.elapsed_ms, "ok": result.ok},
+            )
+            return {
+                "site": profile.id,
+                "answer": result.text if result.ok else "",
+                "ok": result.ok,
+            }
+
+        voices = await asyncio.gather(*(_one(p) for p in chosen), return_exceptions=False)
+        return [v for v in voices if v.get("ok") and v.get("answer")]
 
     async def _extract_knowledge(self, text: str) -> None:
         """Background task: extract entities from conversation for the KG."""

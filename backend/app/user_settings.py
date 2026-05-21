@@ -35,6 +35,10 @@ class HITLConfig(BaseModel):
     account_creation: bool = True
     email_sending: bool = True
     api_calls: bool = False
+    # Web-AI mesh categories.
+    web_ai_send: bool = False
+    social_post: bool = True
+    social_dm: bool = True
     auto_approve_safe: bool = True
 
 
@@ -67,6 +71,11 @@ class CouncilConfig(BaseModel):
     debate_max_rounds: int = 3
     constitutional_max_revisions: int = 3
     fast_mode_threshold: float = 0.2
+    # Web-AI Mesh — consult registered web-AIs as Oracle voices during the
+    # multi-agent run_objective() phase. Off by default since it requires a
+    # live Chrome with logged-in sessions.
+    consult_external_oracle: bool = False
+    external_oracle_max: int = 2
 
 
 class MemoryConfig(BaseModel):
