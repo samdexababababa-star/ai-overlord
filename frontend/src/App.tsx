@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { ChatPanel } from './components/ChatPanel';
-import { AgentOffice } from './components/AgentOffice';
+import { PixelOffice } from './components/PixelOffice';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { SettingsPanel } from './components/SettingsPanel';
 import { ToolsPanel } from './components/ToolsPanel';
@@ -26,7 +26,7 @@ function ViewSwitch() {
         className="flex-1 overflow-hidden flex flex-col"
       >
         {view === 'chat' && <ChatPanel />}
-        {view === 'office' && <AgentOffice />}
+        {view === 'office' && <PixelOffice />}
         {view === 'memory' && <MemoryPanel />}
         {view === 'tools' && <ToolsPanel />}
         {view === 'reasoning' && <ReasoningPanel />}
