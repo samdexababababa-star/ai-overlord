@@ -60,6 +60,7 @@ def get_tools() -> ToolRegistry:
         from .fs import FilesystemTool
         from .shell import ShellTool
         from .vision import ScreenVisionTool
+        from .web_ai import WebAITool
         from .web_search import WebSearchTool
 
         _registry = ToolRegistry()
@@ -68,4 +69,5 @@ def get_tools() -> ToolRegistry:
         _registry.register(ShellTool())
         _registry.register(FilesystemTool())
         _registry.register(ScreenVisionTool())
+        _registry.register(WebAITool())
     return _registry

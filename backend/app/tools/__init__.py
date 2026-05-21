@@ -13,6 +13,7 @@ from .fs import FilesystemTool
 from .registry import Tool, ToolRegistry, get_tools
 from .shell import ShellTool
 from .vision import ScreenVisionTool
+from .web_ai import WebAITool
 from .web_search import WebSearchTool
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "ShellTool",
     "Tool",
     "ToolRegistry",
+    "WebAITool",
     "WebSearchTool",
     "get_tools",
 ]

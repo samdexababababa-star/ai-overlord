@@ -2,12 +2,20 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Check, ExternalLink, Loader2, X, Plus, Trash2 } from 'lucide-react';
+import { Check, ExternalLink, Loader2, X, Plus, Trash2, Download, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore } from '../store';
+import { apiJSON } from '../api';
 
-const ORDER = ['mistral', 'nvidia', 'google', 'groq'] as const;
+const ORDER = ['mistral', 'nvidia', 'google', 'groq', 'openrouter', 'cerebras', 'together'] as const;
 type ProviderId = (typeof ORDER)[number];
+
+type DetectedEnvKey = {
+  env_var: string;
+  provider: string;
+  masked: string;
+  source: string;
+};
 
 export function OnboardingWizard() {
   const show = useStore((s) => s.showOnboarding);
@@ -26,6 +34,14 @@ export function OnboardingWizard() {
   const [label, setLabel] = useState('');
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detected, setDetected] = useState<DetectedEnvKey[]>([]);
+  const [importing, setImporting] = useState(false);
+
+  useEffect(() => {
+    apiJSON<{ keys: DetectedEnvKey[] }>('/onboarding/env-detect')
+      .then((r) => setDetected(r.keys))
+      .catch(() => setDetected([]));
+  }, [show]);
 
   useEffect(() => {
     setKeyInput('');
@@ -61,6 +77,22 @@ export function OnboardingWizard() {
       setError((e as Error).message);
     } finally {
       setValidating(false);
+    }
+  }
+
+  async function importEnvKeys(envVars?: string[]) {
+    setImporting(true);
+    try {
+      await apiJSON('/onboarding/env-import', {
+        method: 'POST',
+        body: JSON.stringify({ env_vars: envVars ?? null }),
+      });
+      await useStore.getState().reloadKeys();
+      setDetected([]);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -129,6 +161,41 @@ export function OnboardingWizard() {
             step {step + 1} / {total}
           </div>
         </div>
+
+        {(detected.length > 0 || !canFinish) && (
+          <div className="px-6 py-2 space-y-2">
+            {detected.length > 0 && (
+              <div className="glass-inset rounded-xl px-3 py-2 flex items-center gap-3 flex-wrap">
+                <Download size={14} className="text-emerald-300" />
+                <span className="text-[11px] text-ink-100">
+                  Detected <b>{detected.length}</b> API key{detected.length === 1 ? '' : 's'} in your environment ({detected.map((d) => d.provider).join(', ')}).
+                </span>
+                <button
+                  onClick={() => importEnvKeys()}
+                  disabled={importing}
+                  className="ml-auto px-2.5 py-1 text-[11px] rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-100 inline-flex items-center gap-1 disabled:opacity-40"
+                >
+                  {importing ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
+                  Import all
+                </button>
+              </div>
+            )}
+            {!canFinish && (
+              <div className="glass-inset rounded-xl px-3 py-2 flex items-center gap-3 flex-wrap">
+                <Sparkles size={14} className="text-violet-300" />
+                <span className="text-[11px] text-ink-100">
+                  No keys yet? You can try AI Overlord right now in <b>Demo mode</b> — offline mock provider, no key needed.
+                </span>
+                <button
+                  onClick={() => setShow(false)}
+                  className="ml-auto px-2.5 py-1 text-[11px] rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-100 inline-flex items-center gap-1"
+                >
+                  <Sparkles size={11} /> Try demo
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         <AnimatePresence mode="wait">
           <motion.div
@@ -263,10 +330,9 @@ export function OnboardingWizard() {
             ) : (
               <button
                 onClick={() => setShow(false)}
-                disabled={!canFinish}
-                className="px-4 py-1.5 text-[12px] rounded-lg bg-gradient-to-br from-[#7cd1ff] to-[#b58cff] text-ink-900 disabled:opacity-40"
+                className="px-4 py-1.5 text-[12px] rounded-lg bg-gradient-to-br from-[#7cd1ff] to-[#b58cff] text-ink-900"
               >
-                {canFinish ? 'Done — enter the overlord' : 'Add at least one key first'}
+                {canFinish ? 'Done — enter the overlord' : 'Enter demo mode'}
               </button>
             )}
           </div>

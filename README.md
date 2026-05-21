@@ -30,45 +30,66 @@ AI Overlord wires together several free / freemium LLM providers into a single d
 
 ---
 
-## Quick start
+## Quick start — one-click launcher
 
-### Prereqs
+> **TL;DR.** Double-click the launcher for your OS. Everything else (venv, dependencies, renderer build, app launch) happens automatically.
 
-- **Node.js 20+** (recommended via `nvm`)
-- **Python 3.11+** (recommended via `pyenv`)
-- **Google Chrome** (any recent version) — used as the controlled browser
-- A free Mistral API key from <https://console.mistral.ai/api-keys/> (minimum to start)
+| OS | Double-click | What it does |
+|---|---|---|
+| **Windows 11** | `Start AI Overlord.bat` | Finds Python, runs `launch.py`, installs everything, opens the app. |
+| **macOS** | `Start AI Overlord.command` | Same, via `python3 launch.py`. |
+| **Linux** | `./start-ai-overlord.sh` | Same. |
 
-### Install
+The only prerequisites are **Python 3.11+** and **Node.js 18+**. If either is missing the launcher prints a one-line install command (`winget install Python.Python.3.12`, `brew install node python@3.12`, or `apt install nodejs npm python3-venv`).
+
+First launch takes ~1 minute (venv + `npm install` + renderer build). Subsequent launches start in a few seconds.
+
+### On launch
+
+The **Onboarding Wizard** opens and:
+- **Auto-detects** any API keys already set in your environment (`MISTRAL_API_KEY`, `GROQ_API_KEY`, `GOOGLE_AI_API_KEY`, …) or a `.env` file at the repo root, and offers to import them with one click.
+- **Walks you through** obtaining each provider's free key with deep-links to their console and step-by-step instructions.
+- **Validates** each key live against the provider's API before storing it (encrypted) in your OS keychain.
+- Offers a **Demo mode** — try the app without any key (mock provider).
+
+### Auto-start at login
+
+In `Settings → System & Startup`, toggle **Open at login** to make AI Overlord launch automatically:
+- **Windows 11** writes a `.bat` into `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\`.
+- **macOS** writes `~/Library/LaunchAgents/ai.overlord.startup.plist`.
+- **Linux** writes `~/.config/autostart/ai-overlord.desktop`.
+
+Combine with **Start minimized** to launch silently to the system tray.
+
+### Manual install (advanced)
+
+If you prefer to do it yourself:
 
 ```bash
 git clone https://github.com/samdexababababa-star/ai-overlord
 cd ai-overlord
-./scripts/setup.sh        # creates Python venv, installs backend + frontend deps
+./scripts/setup.sh           # Linux/macOS
+# or
+.\scripts\setup.ps1          # Windows PowerShell
+./scripts/dev.sh             # dev mode with Vite hot reload
 ```
-
-On Windows / PowerShell:
-
-```powershell
-git clone https://github.com/samdexababababa-star/ai-overlord
-cd ai-overlord
-.\scripts\setup.ps1
-```
-
-### Run (dev)
-
-```bash
-./scripts/dev.sh           # starts backend (FastAPI on :8765) + Electron with hot reload
-```
-
-The first launch opens the **Onboarding Wizard** which walks you through getting each provider's API key, validates each one in real time, and stores them in your OS keychain (`keytar`).
 
 ### Build a desktop installer
 
 ```bash
 cd frontend
-pnpm run build           # builds the renderer
-pnpm run dist            # produces a .AppImage / .exe / .dmg in frontend/release/
+npm run build           # builds the renderer
+npm run dist            # produces a .AppImage / .exe / .dmg in frontend/release/
+```
+
+### Launcher flags
+
+```
+python launch.py --check        # report prereqs and exit
+python launch.py --no-electron  # backend only
+python launch.py --rebuild      # force renderer rebuild
+python launch.py --reset        # wipe .venv + node_modules and re-install
+python launch.py --port 8766    # use a custom backend port
 ```
 
 ---

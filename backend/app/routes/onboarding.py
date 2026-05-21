@@ -6,9 +6,14 @@ POST /onboarding/keys            — add a key
 POST /onboarding/keys/validate   — validate a candidate key against the provider
 DELETE /onboarding/keys          — remove a key
 POST /onboarding/reload          — rebuild the provider registry from the keystore
+GET  /onboarding/env-detect      — detect API keys already in system env / .env files
+POST /onboarding/env-import      — import detected env keys into the keystore
 """
 
 from __future__ import annotations
+
+import os
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -67,6 +72,39 @@ PROVIDER_INFO = {
             "Copy the 'gsk_…' key and paste it below.",
         ],
         "tier_note": "Ultra-fast Llama 3.3 70B inference (~800 tok/s). Free tier with daily TPM caps.",
+    },
+    "openrouter": {
+        "label": "OpenRouter",
+        "console": "https://openrouter.ai/keys",
+        "signup": "https://openrouter.ai/",
+        "steps": [
+            "Go to https://openrouter.ai/ and create a free account.",
+            "Open https://openrouter.ai/keys and create an API key.",
+            "Copy the 'sk-or-…' key and paste it below.",
+        ],
+        "tier_note": "Unified gateway to 200+ models. Several free models available (Llama, DeepSeek, Qwen).",
+    },
+    "cerebras": {
+        "label": "Cerebras Cloud",
+        "console": "https://cloud.cerebras.ai/",
+        "signup": "https://cloud.cerebras.ai/",
+        "steps": [
+            "Go to https://cloud.cerebras.ai/ and sign up.",
+            "Navigate to API Keys in your dashboard.",
+            "Create a new key and paste it below.",
+        ],
+        "tier_note": "Ultra-fast inference on Wafer-Scale hardware. Free tier with daily limits.",
+    },
+    "together": {
+        "label": "Together AI",
+        "console": "https://api.together.xyz/settings/api-keys",
+        "signup": "https://api.together.xyz/",
+        "steps": [
+            "Go to https://api.together.xyz/ and sign up.",
+            "Navigate to https://api.together.xyz/settings/api-keys.",
+            "Create an API key and paste it below.",
+        ],
+        "tier_note": "Fast open-source model inference. Free credits on signup.",
     },
 }
 
@@ -142,3 +180,115 @@ async def validate_key(req: ValidateRequest) -> dict:
 async def reload_keys() -> dict:
     await get_registry().load(all_keys())
     return {"ok": True, "providers": [p.name for p in get_registry().providers()]}
+
+
+# ---------------------------------------------------------------------------
+# Environment-variable auto-detection
+# ---------------------------------------------------------------------------
+
+# Maps each environment variable name to the provider it belongs to.
+ENV_VAR_MAP: dict[str, str] = {
+    "MISTRAL_API_KEY": "mistral",
+    "NVIDIA_API_KEY": "nvidia",
+    "NVIDIA_NIM_API_KEY": "nvidia",
+    "GOOGLE_AI_API_KEY": "google",
+    "GOOGLE_API_KEY": "google",
+    "GEMINI_API_KEY": "google",
+    "GROQ_API_KEY": "groq",
+    "OPENROUTER_API_KEY": "openrouter",
+    "CEREBRAS_API_KEY": "cerebras",
+    "TOGETHER_API_KEY": "together",
+    "TOGETHER_AI_API_KEY": "together",
+}
+
+
+def _load_dotenv(p: Path) -> dict[str, str]:
+    """Tiny .env parser (stdlib only, no python-dotenv dependency)."""
+    out: dict[str, str] = {}
+    if not p.exists():
+        return out
+    try:
+        for raw in p.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):]
+            k, _, v = line.partition("=")
+            k = k.strip()
+            v = v.strip().strip('"').strip("'")
+            if k and v:
+                out[k] = v
+    except Exception:
+        return out
+    return out
+
+
+def _detect_env_keys() -> dict[str, dict[str, str]]:
+    """Return ``{env_var: {"provider": "...", "value": "...", "source": "..."}}``."""
+    found: dict[str, dict[str, str]] = {}
+
+    # 1. System environment.
+    for env_var, provider in ENV_VAR_MAP.items():
+        v = os.environ.get(env_var)
+        if v:
+            found[env_var] = {"provider": provider, "value": v, "source": "env"}
+
+    # 2. .env files at repo root and home directory.
+    candidates = [
+        Path.cwd() / ".env",
+        Path(__file__).resolve().parents[3] / ".env",
+        Path.home() / ".overlord.env",
+    ]
+    for cand in candidates:
+        for k, v in _load_dotenv(cand).items():
+            if k in ENV_VAR_MAP and k not in found:
+                found[k] = {
+                    "provider": ENV_VAR_MAP[k],
+                    "value": v,
+                    "source": str(cand),
+                }
+    return found
+
+
+@router.get("/env-detect")
+def env_detect() -> dict:
+    """List API keys we can auto-import from environment variables / .env files.
+
+    Values are returned **masked** — the actual key is held server-side until
+    the user confirms the import via POST ``/onboarding/env-import``.
+    """
+    found = _detect_env_keys()
+    out: list[dict] = []
+    for env_var, info in found.items():
+        v = info["value"]
+        masked = v[:4] + "…" + v[-4:] if len(v) > 12 else "…"
+        out.append({
+            "env_var": env_var,
+            "provider": info["provider"],
+            "masked": masked,
+            "source": info["source"],
+        })
+    return {"keys": out}
+
+
+class EnvImportRequest(BaseModel):
+    env_vars: list[str] | None = None  # if None, import everything detected
+
+
+@router.post("/env-import")
+async def env_import(req: EnvImportRequest) -> dict:
+    """Persist the detected env keys into the encrypted keystore."""
+    found = _detect_env_keys()
+    selected = req.env_vars if req.env_vars else list(found.keys())
+    imported = 0
+    for env_var in selected:
+        info = found.get(env_var)
+        if not info:
+            continue
+        label = env_var.lower()
+        add_key(info["provider"], label, info["value"])
+        imported += 1
+    if imported:
+        await get_registry().load(all_keys())
+    return {"ok": True, "imported": imported}
